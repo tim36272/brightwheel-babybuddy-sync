@@ -417,6 +417,7 @@ def trigger_2fa(s, email, password):
     r.raise_for_status()
     data = r.json()
     if data["2fa_required"] == True:
+        print(f'2FA required, code sent to {data["2fa_code_sent_to"][0]}')
         twofacode = input("Enter 2FA code: ")
         return twofacode
     return None
