@@ -409,18 +409,14 @@ def trigger_2fa(s, email, password):
         "X-Client-Name": "web",
         "X-Client-Version": "225",
     }
-    print("Checking for two factor")
     r = s.post(
         "https://schools.mybrightwheel.com/api/v1/sessions/start",
         headers=headers,
         json=login_data,
     )
-    print("Finished two factor check")
     r.raise_for_status()
-    print("Two factor check success")
     data = r.json()
     if data["2fa_required"] == True:
-        print(f'2FA required, code sent to {data["2fa_code_sent_to"][0]}')
         twofacode = input("Enter 2FA code: ")
         return twofacode
     return None
@@ -446,15 +442,12 @@ def login(s, email, password, twofacode=None):
         "X-Client-Name": "web",
         "X-Client-Version": "225",
     }
-    print("Attempting login")
     r = s.post(
         "https://schools.mybrightwheel.com/api/v1/sessions",
         headers=headers,
         json=login_data,
     )
-    print("Login request sent")
     r.raise_for_status()
-    print("Logged in")
     csrf_token = r.json()["csrf"]
     headers["X-CSRF-Token"] = csrf_token
     s.headers.update(headers)
