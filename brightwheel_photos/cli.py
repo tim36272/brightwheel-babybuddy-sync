@@ -131,7 +131,7 @@ def handle_observation(activity, args, babybuddy_session, babybuddy_token):
     post_content = {"child": args.babybuddy_child_id,
                 "time": activity["event_date"],
                 "tags": ["Brightwheel"],
-                "note": f"Imported from Brightwheel: Observation: {activity["note"]}"}
+                "note": f"Imported from Brightwheel: Observation: {activity['note']}"}
     if args.skip_existing:
         #check if this event already exists
         params = {"limit": 1, "child": args.babybuddy_child_id, "date": activity["event_date"], "tags": ["Brightwheel"]}
@@ -164,7 +164,7 @@ def handle_potty(activity, args, babybuddy_session, babybuddy_token):
                 "wet": is_wet,
                 "solid": is_bowel_movement,
                 "tags": ["Brightwheel"],
-                "notes": f"Imported from Brightwheel: {activity["note"]}"}
+                "notes": f"Imported from Brightwheel: {activity['note']}"}
     if args.skip_existing:
         #check if this event already exists
         params = {"limit": 1, "child": args.babybuddy_child_id, "date": activity["event_date"], "tags": ["Brightwheel"]}
@@ -211,7 +211,7 @@ def handle_food(activity, args, babybuddy_session, babybuddy_token):
                 "method": "bottle" if is_milk else "self fed",
                 "amount": activity["details_blob"]["amount"],
                 "tags": ["Brightwheel"],
-                "notes": f"Imported from Brightwheel: {activity["note"]}\n\n{','.join(menu)}"}
+                "notes": f"Imported from Brightwheel: {activity['note']}\n\n{','.join(menu)}"}
 
     print(f"Creating feeding: {post_content}")
     if args.skip_existing:
@@ -254,7 +254,7 @@ def handle_ins_and_outs(ins_outs, babybuddy_session, args, babybuddy_token):
                             if dropoff_report["last_potty"] is None:
                                 print("Last potty time not populated, using event date")
                                 dropoff_report["last_potty"] = in_date
-                            note = f"Imported from Brightwheel: daycare check in at: {utc_to_local(in_date)}, check out at: {utc_to_local(out_date)}.\nDropoff report:\n    Woke up at: {utc_to_local(dropoff_report["woke_up"])}\n    Last ate at: {utc_to_local(dropoff_report["last_ate"])}\n    Last potty: {utc_to_local(dropoff_report["last_potty"])}\n    Pickup time: {utc_to_local(dropoff_report["pickup_time"])}"
+                            note = f"Imported from Brightwheel: daycare check in at: {utc_to_local(in_date)}, check out at: {utc_to_local(out_date)}.\nDropoff report:\n    Woke up at: {utc_to_local(dropoff_report['woke_up'])}\n    Last ate at: {utc_to_local(dropoff_report['last_ate'])}\n    Last potty: {utc_to_local(dropoff_report['last_potty'])}\n    Pickup time: {utc_to_local(dropoff_report['pickup_time'])}"
                         else:
                             note = f"Imported from Brightwheel: daycare check in at: {utc_to_local(in_date)}, check out at: {utc_to_local(out_date)}.\nDropoff report was blank"
                         post_content = {"child": args.babybuddy_child_id,
@@ -303,9 +303,9 @@ def handle_naps(naps, babybuddy_session, args, babybuddy_token):
                         wake_date = wake_event["event_date"]
                         notes = ""
                         if sleep_event["note"] and len(sleep_event["note"]) > 0:
-                            notes += f"Start nap note: {sleep_event["note"]}"
+                            notes += f"Start nap note: {sleep_event['note']}"
                         if wake_event["note"] and len(wake_event["note"]) > 0:
-                            notes += (" " if len(notes) > 0 else "") + f"End nap note: {wake_event["note"]}"
+                            notes += (" " if len(notes) > 0 else "") + f"End nap note: {wake_event['note']}"
 
                         headers = {"Content-Type": "application/json",
                                    "Authorization": f"Token {babybuddy_token}"}
