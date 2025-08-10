@@ -19,17 +19,15 @@ import requests
 def main():
     """Runs brightwheel babybuddy sync cli"""
     parser = argparse.ArgumentParser(description="Download data from Brightwheel")
-    parser.add_argument(
-        "--email", required=True, help="email used for Brightwheel account"
-    )
-    parser.add_argument(
-        "--password", required=True, help="password used for Brightwheel account"
-    )
-    parser.add_argument(
-        "--directory", required=True, help="directory in which to save the photos"
-    )
+    parser.add_argument("--email", required=True, help="email used for Brightwheel account")
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument("--password", help="password used for Brightwheel account")
+    password_group.add_argument("--password_file", help="path to password used for Brightwheel account")
+    parser.add_argument("--directory", required=True, help="directory in which to save the photos")
     parser.add_argument("--babybuddy_url", required=True, help="Base URL of your babybuddy instance, such as https://baby.example.com")
-    parser.add_argument("--babybuddy_token", required=True, help="A user's Baby Buddy token from their user settings page, a 40 character string")
+    babybuddy_token_group = parser.add_mutually_exclusive_group(required=True)
+    babybuddy_token_group.add_argument("--babybuddy_token", help="A user's Baby Buddy token from their user settings page, a 40 character string")
+    babybuddy_token_group.add_argument("--babybuddy_token_file", help="Path to a user's Baby Buddy token from their user settings page, a 40 character string")
     parser.add_argument("--babybuddy_child_id", required=True, help="A child's ID, typically 1")
     parser.add_argument("--student-id", help="Brightwheel student ID")
     parser.add_argument("--since", help="Skip any data before a given YYYY-MM-DD")
@@ -41,13 +39,26 @@ def main():
     #Directory for media
     os.makedirs(args.directory, exist_ok=True)
 
+    #Check if anything needs to be loaded from a file
+
+    if args.password_file:
+        with open(args.password_file, "r") as password_file_handle:
+            brightwheel_password = password_file_handle.read()
+    else:
+        brightwheel_password = args.password
+    if args.babybuddy_token_file:
+        with open(args.babybuddy_token_file, "r") as babybuddy_token_file_handle:
+            babybuddy_token = babybuddy_token_file_handle.read()
+    else:
+        babybuddy_token = args.babybuddy_token
+
     #temporary variables for babybuddy data
     ins_outs = [] #Each element is dict like {"event_date": "2025-08-01T21:59:45.908Z", "checkin": True, "dropoff_report": "string"}
     naps = [] #Each element is dict like {"event_date": "2025-08-01T21:59:45.908Z", "wake": True, "note": "A note"}
     with requests.Session() as brightwheel_session:
         try:
-            twofacode = trigger_2fa(brightwheel_session, args.email, args.password)
-            login(brightwheel_session, args.email, args.password, twofacode)
+            twofacode = trigger_2fa(brightwheel_session, args.email, brightwheel_password)
+            login(brightwheel_session, args.email, brightwheel_password, twofacode)
         except requests.HTTPError as err:
             if [err.response.status_code == 401]:
                 print(f"Login failed {err}", file=sys.stderr)
@@ -96,27 +107,27 @@ def main():
                             #"state" is "1" for checkin, "2 " for checkout. dropoff_report and health_screen_display is populated for checkins
                             ins_outs.append( {"event_date": activity["event_date"], "checkin": True if activity["state"]=="1" else False, "dropoff_report": activity["dropoff_report"]})
                         elif activity["action_type"] == "ac_food":
-                            handle_food(activity, args, babybuddy_session)
+                            handle_food(activity, args, babybuddy_session, babybuddy_token)
                         elif activity["action_type"] == "ac_nap":
                             # "state" is "0" for wake up, "1" for fall asleep, duration has to be calculated manually
                             naps.append({"event_date": activity["event_date"], "wake": activity["state"]=="0", "note": activity["note"]})
                         elif activity["action_type"] == "ac_potty":
-                            handle_potty(activity, args, babybuddy_session)
+                            handle_potty(activity, args, babybuddy_session, babybuddy_token)
                         elif activity["action_type"] == "ac_observation":
-                            handle_observation(activity, args, babybuddy_session)
+                            handle_observation(activity, args, babybuddy_session, babybuddy_token)
                     except requests.exceptions.HTTPError as e:
                         if args.ignore_errors and e.response.status_code == 400:
                             print(f"Ignoring exception {e}, assuming event is already in Baby Buddy")
                         else:
                             raise
-            handle_ins_and_outs(ins_outs, babybuddy_session, args)
-            handle_naps(naps, babybuddy_session, args)
+            handle_ins_and_outs(ins_outs, babybuddy_session, args, babybuddy_token)
+            handle_naps(naps, babybuddy_session, args, babybuddy_token)
 
-def handle_observation(activity, args, babybuddy_session):
+def handle_observation(activity, args, babybuddy_session, babybuddy_token):
     # "note" includes teacher note
     # "observation_milestones" is a huge structure of all possible milestones, not sure how they are selected
     headers = {"Content-Type": "application/json",
-                "Authorization": f"Token {args.babybuddy_token}"}
+                "Authorization": f"Token {babybuddy_token}"}
     post_content = {"child": args.babybuddy_child_id,
                 "time": activity["event_date"],
                 "tags": ["Brightwheel"],
@@ -135,7 +146,7 @@ def handle_observation(activity, args, babybuddy_session):
     
     r = babybuddy_session.post(f"{args.babybuddy_url}/api/notes/", headers=headers, json=post_content)
     r.raise_for_status()
-def handle_potty(activity, args, babybuddy_session):
+def handle_potty(activity, args, babybuddy_session, babybuddy_token):
     #"details_blob": {
     #        "potty": "wet", #or "nothing"
     #        "potty_type": "diaper",
@@ -145,7 +156,7 @@ def handle_potty(activity, args, babybuddy_session):
     #        ]
     #      },
     headers = {"Content-Type": "application/json",
-                "Authorization": f"Token {args.babybuddy_token}"}
+                "Authorization": f"Token {babybuddy_token}"}
     is_wet = "wet" in activity["details_blob"]["potty_extras"]
     is_bowel_movement = "bm" in activity["details_blob"]["potty_extras"]
     post_content = {"child": args.babybuddy_child_id,
@@ -168,7 +179,7 @@ def handle_potty(activity, args, babybuddy_session):
     print(f"Creating potty: {post_content}")
     r = babybuddy_session.post(f"{args.babybuddy_url}/api/changes/", headers=headers, json=post_content)
     r.raise_for_status()
-def handle_food(activity, args, babybuddy_session):
+def handle_food(activity, args, babybuddy_session, babybuddy_token):
     #"details_blob": {
     #  "amount": 4, #or 1 for solids
     #  "food_type": "bottle", #or "food"
@@ -191,7 +202,7 @@ def handle_food(activity, args, babybuddy_session):
     #},
     menu = [item["name"] for item in activity["menu_item_tags"]]
     headers = {"Content-Type": "application/json",
-            "Authorization": f"Token {args.babybuddy_token}"}
+            "Authorization": f"Token {babybuddy_token}"}
     is_milk = activity["details_blob"]["food_type"]=="bottle"
     post_content = {"child": args.babybuddy_child_id,
                 "start": activity["event_date"],
@@ -215,7 +226,7 @@ def handle_food(activity, args, babybuddy_session):
             print(f"Feeding does not yet exist")
     r = babybuddy_session.post(f"{args.babybuddy_url}/api/feedings/", headers=headers, json=post_content)
     r.raise_for_status()
-def handle_ins_and_outs(ins_outs, babybuddy_session, args):
+def handle_ins_and_outs(ins_outs, babybuddy_session, args, babybuddy_token):
             print(f"Ins and outs: {ins_outs}")
             in_out_iter = iter(enumerate(ins_outs))
             for index,in_out in in_out_iter:
@@ -232,7 +243,7 @@ def handle_ins_and_outs(ins_outs, babybuddy_session, args):
                         dropoff_report = in_event["dropoff_report"]
 
                         headers = {"Content-Type": "application/json",
-                                   "Authorization": f"Token {args.babybuddy_token}"}
+                                   "Authorization": f"Token {babybuddy_token}"}
                         if(dropoff_report):
                             if dropoff_report["woke_up"] is None:
                                 print("Dropoff wake time not populated, using event date")
@@ -276,7 +287,7 @@ def handle_ins_and_outs(ins_outs, babybuddy_session, args):
                     #Skip the next event, it has already been handled
                     next(in_out_iter)
 
-def handle_naps(naps, babybuddy_session, args):
+def handle_naps(naps, babybuddy_session, args, babybuddy_token):
             print(f"Naps: {naps}")
             naps_iter = iter(enumerate(naps))
             for index,nap in naps_iter:
@@ -297,7 +308,7 @@ def handle_naps(naps, babybuddy_session, args):
                             notes += (" " if len(notes) > 0 else "") + f"End nap note: {wake_event["note"]}"
 
                         headers = {"Content-Type": "application/json",
-                                   "Authorization": f"Token {args.babybuddy_token}"}
+                                   "Authorization": f"Token {babybuddy_token}"}
                         post_content = {"child": args.babybuddy_child_id,
                                     "start": sleep_date,
                                     "end": wake_date, #############################################
