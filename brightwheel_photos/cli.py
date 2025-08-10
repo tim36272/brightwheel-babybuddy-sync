@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--before", help="Skip any data after a given YYYY-MM-DD")
     parser.add_argument("--skip-existing",action="store_true",help="Skip any existing photos, videos, and other data")
     parser.add_argument("--ignore-errors",action="store_true",help="When an HTTP 400 code is returned from babybuddy, ignore it")
+    parser.add_argument("--latest-date-file",help="Path to a file used to cache the latest downloaded date")
     args = parser.parse_args()
 
     #Directory for media
@@ -51,6 +52,11 @@ def main():
             babybuddy_token = babybuddy_token_file_handle.read()
     else:
         babybuddy_token = args.babybuddy_token
+
+    if args.latest_date_file and os.path.isfile(args.latest_date_file):
+        with open(args.latest_date_file, "r") as latest_date_file_handle:
+            args.since = latest_date_file_handle.read()
+            print(f"Updating --since parameter from {args.latest_date_file} to: {args.since}")
 
     #temporary variables for babybuddy data
     ins_outs = [] #Each element is dict like {"event_date": "2025-08-01T21:59:45.908Z", "checkin": True, "dropoff_report": "string"}
@@ -82,10 +88,14 @@ def main():
             student_id = students[0]["object_id"]
         with requests.Session() as babybuddy_session:
             # find and save all data for the student
+            latest_date = datetime.strptime("1970-01-01", "%Y-%m-%d")
             with open(f"student-{student_id}-activities.jsonl", "w") as raw_fh:
                 for activity in find_activities(brightwheel_session, student_id):
                     json.dump(activity, raw_fh)
                     raw_fh.write("\n")
+                    this_activity_date = datetime.strptime(activity["event_date"][0:10], "%Y-%m-%d")
+                    if this_activity_date > latest_date:
+                        latest_date = this_activity_date
                     # Skip if less than since argument
                     if args.since:
                         event_date = datetime.strptime(activity["event_date"][0:10], "%Y-%m-%d")
@@ -122,6 +132,10 @@ def main():
                             raise
             handle_ins_and_outs(ins_outs, babybuddy_session, args, babybuddy_token)
             handle_naps(naps, babybuddy_session, args, babybuddy_token)
+            #Store latest date for future runs
+            if args.latest_date_file:
+                with open(args.latest_date_file, "w") as latest_date_file_handle:
+                    latest_date_file_handle.write(latest_date.strftime("%Y-%m-%d"))
 
 def handle_observation(activity, args, babybuddy_session, babybuddy_token):
     # "note" includes teacher note
